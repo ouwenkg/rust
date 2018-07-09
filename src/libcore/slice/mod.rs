@@ -3889,18 +3889,18 @@ unsafe impl<'a, T> TrustedRandomAccess for ExactChunksMut<'a, T> {
 /// ```
 /// use std::slice;
 ///
-/// // manifest a slice out of thin air!
-/// let ptr = 0x1234 as *const usize;
-/// let amt = 10;
-/// unsafe {
-///     let slice = slice::from_raw_parts(ptr, amt);
-/// }
+/// // manifest a slice for a single element
+/// let x = 42;
+/// let ptr = &x as *const _;
+/// let slice = unsafe { slice::from_raw_parts(ptr, 1) };
+/// assert_eq!(slice[0], 42);
 /// ```
 ///
 /// [`NonNull::dangling()`]: ../../std/ptr/struct.NonNull.html#method.dangling
 #[inline]
 #[stable(feature = "rust1", since = "1.0.0")]
 pub unsafe fn from_raw_parts<'a, T>(data: *const T, len: usize) -> &'a [T] {
+    debug_assert!(data as usize % mem::align_of::<T>() == 0, "attempt to create unaligned slice");
     Repr { raw: FatPtr { data, len } }.rust
 }
 
@@ -3914,6 +3914,7 @@ pub unsafe fn from_raw_parts<'a, T>(data: *const T, len: usize) -> &'a [T] {
 #[inline]
 #[stable(feature = "rust1", since = "1.0.0")]
 pub unsafe fn from_raw_parts_mut<'a, T>(data: *mut T, len: usize) -> &'a mut [T] {
+    debug_assert!(data as usize % mem::align_of::<T>() == 0, "attempt to create unaligned slice");
     Repr { raw: FatPtr { data, len} }.rust_mut
 }
 
