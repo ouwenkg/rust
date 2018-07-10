@@ -386,7 +386,7 @@ fn test_iter_consistency() {
         let v : &[T] = &[x, x, x];
         let len = v.len();
 
-        // TODO: Once #42789 is resolved, also compare the locations with each other
+        // FIXME: Once #42789 is resolved, also compare the locations with each other
         // and with slice patterns.
 
         for i in 0..len {
@@ -413,7 +413,7 @@ fn test_iter_consistency() {
         let v : &mut [T] = &mut [x, x, x];
         let len = v.len();
 
-        // TODO: Once #42789 is resolved, also compare the locations with each other
+        // FIXME: Once #42789 is resolved, also compare the locations with each other
         // and with slice patterns.
 
         for i in 0..len {
