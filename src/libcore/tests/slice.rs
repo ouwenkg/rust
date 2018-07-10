@@ -376,6 +376,75 @@ fn test_windows_zip() {
     assert_eq!(res, [14, 18, 22, 26]);
 }
 
+#[test]
+#[allow(const_err)]
+fn test_iter_consistency() {
+    use std::fmt::Debug;
+    use std::mem;
+
+    fn helper<T : Copy + Debug + PartialEq>(x : T) {
+        let v : &[T] = &[x, x, x];
+        let len = v.len();
+
+        // TODO: Once #42789 is resolved, also compare the locations with each other
+        // and with slice patterns.
+
+        for i in 0..len {
+            let nth = v.iter().nth(i).unwrap();
+            assert!(nth as *const _ as usize % mem::align_of::<T>() == 0);
+            assert_eq!(nth, &x);
+        }
+        assert_eq!(v.iter().nth(len), None, "nth(len) should return None");
+
+        let mut it = v.iter();
+        for i in 0..len{
+            let remaining = len - i;
+            assert_eq!(it.size_hint(), (remaining, Some(remaining)));
+
+            let next = it.next().unwrap();
+            assert!(next as *const _ as usize % mem::align_of::<T>() == 0);
+            assert_eq!(next, &x);
+        }
+        assert_eq!(it.size_hint(), (0, Some(0)));
+        assert_eq!(it.next(), None, "The final call to next() should return None");
+    }
+
+    fn helper_mut<T : Copy + Debug + PartialEq>(mut x : T) {
+        let v : &mut [T] = &mut [x, x, x];
+        let len = v.len();
+
+        // TODO: Once #42789 is resolved, also compare the locations with each other
+        // and with slice patterns.
+
+        for i in 0..len {
+            let nth = v.iter_mut().nth(i).unwrap();
+            assert!(nth as *mut _ as usize % mem::align_of::<T>() == 0);
+            assert_eq!(nth, &mut x);
+        }
+        assert_eq!(v.iter().nth(len), None, "nth(len) should return None");
+
+        let mut it = v.iter_mut();
+        for i in 0..len {
+            let remaining = len - i;
+            assert_eq!(it.size_hint(), (remaining, Some(remaining)));
+
+            let next = it.next().unwrap();
+            assert!(next as *mut _ as usize % mem::align_of::<T>() == 0);
+            assert_eq!(next, &mut x);
+        }
+        assert_eq!(it.size_hint(), (0, Some(0)));
+        assert_eq!(it.next(), None, "The final call to next() should return None");
+    }
+
+    // Make sure this works consistently for various types, including ZSTs.
+    helper(0u32);
+    helper(());
+    helper([0u32; 0]); // ZST with alignment > 0
+    helper_mut(0u32);
+    helper_mut(());
+    helper_mut([0u32; 0]); // ZST with alignment > 0
+}
+
 // The current implementation of SliceIndex fails to handle methods
 // orthogonally from range types; therefore, it is worth testing
 // all of the indexing operations on each input.

@@ -45,7 +45,7 @@ use option::Option;
 use option::Option::{None, Some};
 use result::Result;
 use result::Result::{Ok, Err};
-use ptr;
+use ptr::{self, NonNull};
 use mem;
 use marker::{Copy, Send, Sync, Sized, self};
 use iter_private::TrustedRandomAccess;
@@ -80,7 +80,7 @@ macro_rules! slice_offset {
     ($ptr:expr, $by:expr) => {{
         let ptr = $ptr;
         if size_from_ptr(ptr) == 0 {
-            (ptr as *mut i8).wrapping_offset($by) as _
+            (ptr as *mut i8).wrapping_offset($by.wrapping_mul(align_from_ptr(ptr) as isize)) as _
         } else {
             ptr.offset($by)
         }
@@ -93,7 +93,7 @@ macro_rules! make_ref {
         let ptr = $ptr;
         if size_from_ptr(ptr) == 0 {
             // Use a non-null pointer value
-            &*(1 as *mut _)
+            &*(NonNull::dangling().as_ptr() as *const _)
         } else {
             &*ptr
         }
@@ -106,11 +106,37 @@ macro_rules! make_ref_mut {
         let ptr = $ptr;
         if size_from_ptr(ptr) == 0 {
             // Use a non-null pointer value
-            &mut *(1 as *mut _)
+            &mut *(NonNull::dangling().as_ptr())
         } else {
             &mut *ptr
         }
     }};
+}
+
+macro_rules! make_slice {
+    ($start: expr, $end: expr) => {{
+        let start = $start;
+        let len = unsafe { ptrdistance($start, $end) };
+        if size_from_ptr(start) == 0 {
+            // use a non-null pointer value
+            unsafe { from_raw_parts(NonNull::dangling().as_ptr() as *const _, len) }
+        } else {
+            unsafe { from_raw_parts(start, len) }
+        }
+    }}
+}
+
+macro_rules! make_mut_slice {
+    ($start: expr, $end: expr) => {{
+        let start = $start;
+        let len = unsafe { ptrdistance($start, $end) };
+        if size_from_ptr(start) == 0 {
+            // use a non-null pointer value
+            unsafe { from_raw_parts_mut(NonNull::dangling().as_ptr(), len) }
+        } else {
+            unsafe { from_raw_parts_mut(start, len) }
+        }
+    }}
 }
 
 #[lang = "slice"]
@@ -581,7 +607,7 @@ impl<T> [T] {
     pub fn iter(&self) -> Iter<T> {
         unsafe {
             let p = if mem::size_of::<T>() == 0 {
-                1 as *const _
+                NonNull::dangling().as_ptr() as *const _
             } else {
                 let p = self.as_ptr();
                 assume(!p.is_null());
@@ -612,7 +638,7 @@ impl<T> [T] {
     pub fn iter_mut(&mut self) -> IterMut<T> {
         unsafe {
             let p = if mem::size_of::<T>() == 0 {
-                1 as *mut _
+                NonNull::dangling().as_ptr()
             } else {
                 let p = self.as_mut_ptr();
                 assume(!p.is_null());
@@ -2369,6 +2395,11 @@ fn size_from_ptr<T>(_: *const T) -> usize {
     mem::size_of::<T>()
 }
 
+#[inline]
+fn align_from_ptr<T>(_: *const T) -> usize {
+    mem::align_of::<T>()
+}
+
 // The shared definition of the `Iter` and `IterMut` iterators
 macro_rules! iterator {
     (struct $name:ident -> $ptr:ty, $elem:ty, $mkref:ident) => {
@@ -2545,34 +2576,6 @@ macro_rules! iterator {
         #[unstable(feature = "trusted_len", issue = "37572")]
         unsafe impl<'a, T> TrustedLen for $name<'a, T> {}
     }
-}
-
-macro_rules! make_slice {
-    ($start: expr, $end: expr) => {{
-        let start = $start;
-        let diff = ($end as usize).wrapping_sub(start as usize);
-        if size_from_ptr(start) == 0 {
-            // use a non-null pointer value
-            unsafe { from_raw_parts(1 as *const _, diff) }
-        } else {
-            let len = diff / size_from_ptr(start);
-            unsafe { from_raw_parts(start, len) }
-        }
-    }}
-}
-
-macro_rules! make_mut_slice {
-    ($start: expr, $end: expr) => {{
-        let start = $start;
-        let diff = ($end as usize).wrapping_sub(start as usize);
-        if size_from_ptr(start) == 0 {
-            // use a non-null pointer value
-            unsafe { from_raw_parts_mut(1 as *mut _, diff) }
-        } else {
-            let len = diff / size_from_ptr(start);
-            unsafe { from_raw_parts_mut(start, len) }
-        }
-    }}
 }
 
 /// Immutable slice iterator
@@ -2791,11 +2794,10 @@ impl<'a, T> ExactSizeIterator for IterMut<'a, T> {
 }
 
 // Return the number of elements of `T` from `start` to `end`.
-// Return the arithmetic difference if `T` is zero size.
 #[inline(always)]
 unsafe fn ptrdistance<T>(start: *const T, end: *const T) -> usize {
     if mem::size_of::<T>() == 0 {
-        (end as usize).wrapping_sub(start as usize)
+        (end as usize).wrapping_sub(start as usize) / mem::align_of::<T>()
     } else {
         end.offset_from(start) as usize
     }
