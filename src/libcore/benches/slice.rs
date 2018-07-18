@@ -65,3 +65,49 @@ fn binary_search_l2_with_dups(b: &mut Bencher) {
 fn binary_search_l3_with_dups(b: &mut Bencher) {
     binary_search(b, Cache::L3, |i| i / 16 * 16);
 }
+
+fn iter<T>(b: &mut Bencher, mapper: impl Fn(usize) -> T) {
+    let size = 1024;
+    let mut v = (0..size).map(mapper).collect::<Vec<T>>();
+    b.iter(move || {
+        let mut v = &mut v[..];
+        black_box(&mut v);
+        for i in v.iter() {
+            black_box(i);
+        }
+    });
+}
+
+fn iter_nth<T>(b: &mut Bencher, mapper: impl Fn(usize) -> T) {
+    let size = 1024;
+    let mut v = (0..size).map(mapper).collect::<Vec<T>>();
+    b.iter(move || {
+        let mut v = &mut v[..];
+        black_box(&mut v);
+        let mut it = v.iter();
+        for i in 0..size {
+            black_box(it.nth(0).unwrap());
+            black_box(v.iter().nth(i).unwrap());
+        }
+    });
+}
+
+#[bench]
+fn iter_usize(b: &mut Bencher) {
+    iter(b, |i| i);
+}
+
+#[bench]
+fn iter_zst(b: &mut Bencher) {
+    iter(b, |_i| ());
+}
+
+#[bench]
+fn iter_nth_usize(b: &mut Bencher) {
+    iter_nth(b, |i| i);
+}
+
+#[bench]
+fn iter_nth_zst(b: &mut Bencher) {
+    iter_nth(b, |_i| ());
+}
